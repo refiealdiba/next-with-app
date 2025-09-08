@@ -1,9 +1,28 @@
 "use server";
 
+import { signIn } from "@/auth";
+import { AuthError } from "next-auth";
+
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import postgres from "postgres";
+
+export async function authenticate(prevState: string | undefined, formData: FormData) {
+    try {
+        await signIn("credentials", formData);
+    } catch (error) {
+        if (error instanceof AuthError) {
+            switch (error.type) {
+                case "CredentialsSignin":
+                    return "Invalid credentials.";
+                default:
+                    return "Something went wrong.";
+            }
+        }
+        throw error;
+    }
+}
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: "require" });
 
@@ -12,9 +31,7 @@ const FormSchema = z.object({
     customerId: z.string({
         invalid_type_error: "Please select a customer",
     }),
-    amount: z.coerce
-        .number()
-        .gt(0, { message: "Please enter an amount greater than 0" }),
+    amount: z.coerce.number().gt(0, { message: "Please enter an amount greater than 0" }),
     status: z.enum(["pending", "paid"], {
         invalid_type_error: "Please select an invoice status",
     }),
@@ -68,11 +85,7 @@ export async function createInvoice(prevState: State, formData: FormData) {
     redirect("/dashboard/invoices");
 }
 
-export async function updateInvoice(
-    id: string,
-    prevState: State,
-    formData: FormData
-) {
+export async function updateInvoice(id: string, prevState: State, formData: FormData) {
     const validatedFields = UpdateInvoice.safeParse({
         customerId: formData.get("customerId"),
         amount: formData.get("amount"),
